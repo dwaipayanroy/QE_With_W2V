@@ -1,5 +1,5 @@
 /**
- * 
+ * COMPLETE.
 */
 package QEUsingW2V;
 
@@ -11,8 +11,6 @@ package QEUsingW2V;
 import WordVectors.WordVec;
 import WordVectors.WordVecs;
 import common.CollectionStatistics;
-import common.DocumentVector;
-import common.PerTermStat;
 import common.TRECQuery;
 import common.TRECQueryParser;
 import java.io.File;
@@ -54,7 +52,7 @@ import org.apache.lucene.store.FSDirectory;
  */
 
 
-public class PostRetrievalQE {
+public class PreRetrievalQE {
 
     Properties      prop;
     CollectionStatistics    collStat;
@@ -84,9 +82,9 @@ public class PostRetrievalQE {
     int             k;              // k terms to be added in the query
     float           QMIX;
     WordVecs        wordVecs;
-    private int numFeedbackDocs;
+    boolean         toCompose;
 
-    public PostRetrievalQE(Properties prop) throws IOException, Exception {
+    public PreRetrievalQE(Properties prop) throws IOException, Exception {
 
         LM_LAMBDA = 0.6f;
 
@@ -103,7 +101,7 @@ public class PostRetrievalQE {
         indexPath = prop.getProperty("indexPath");
         System.out.println("Using index at: " + indexPath);
         indexFile = new File(prop.getProperty("indexPath"));
-        Directory indexDir = FSDirectory.open(indexFile.toPath());
+        Directory indexDir = FSDirectory.open(indexFile);
 
         if (!DirectoryReader.indexExists(indexDir)) {
             System.err.println("Index doesn't exists in "+indexFile.getAbsolutePath());
@@ -116,17 +114,12 @@ public class PostRetrievalQE {
         /* index path set */
         docIdFieldName = prop.getProperty("docIdFieldName","docid");
 
-        System.out.println("Building collection statistics");
-        collStat = new CollectionStatistics(indexPath, "content");
-        collStat.buildCollectionStat();
-        System.out.println("Collection Statistics building completed");
-
         simFuncChoice = Integer.parseInt(prop.getProperty("similarityFunction"));
         param1 = Float.parseFloat(prop.getProperty("param1"));
         param2 = Float.parseFloat(prop.getProperty("param2"));
 
         /* setting reader and searcher */
-        reader = DirectoryReader.open(FSDirectory.open(indexFile.toPath()));
+        reader = DirectoryReader.open(FSDirectory.open(indexFile));
         searcher = new IndexSearcher(reader);
         searcher.setSimilarity(new LMJelinekMercerSimilarity(LM_LAMBDA));
         setSimilarityFunction(simFuncChoice, param1, param2);
@@ -144,11 +137,11 @@ public class PostRetrievalQE {
 
         numHits = Integer.parseInt(prop.getProperty("numHits"));
 
-        /* All word vectors are loaded in worVecs.wordvecmap */
+        /* All word vectors are loaded in wordVecs.wordvecmap */
         wordVecs = new WordVecs(prop);
         k = Integer.parseInt(prop.getProperty("k"));
         QMIX = Float.parseFloat(prop.getProperty("queryMix"));
-        numFeedbackDocs = Integer.parseInt(prop.getProperty("numFeedbackDocs"));
+        toCompose = Boolean.parseBoolean(prop.getProperty("composeQuery"));
 
         /* setting res path */
         setRunName_ResFileName();
@@ -177,10 +170,10 @@ public class PostRetrievalQE {
 
     private void setRunName_ResFileName() {
 
-        Similarity s = searcher.getSimilarity(true);
-        runName = queryFile.getName()+"-"+s.toString()+"-postRetQE";
+        Similarity s = searcher.getSimilarity();
+        runName = queryFile.getName()+"-"+s.toString()+"-preRetQE";
         runName = runName.replace(" ", "").replace("(", "").replace(")", "").replace("00000", "");
-        runName = runName.concat("-"+QMIX+"-"+numFeedbackDocs+"-"+k);
+        runName = runName.concat("-"+QMIX+"-"+k);
         if(null == prop.getProperty("resPath"))
             resPath = "/home/dwaipayan/";
         else
@@ -204,6 +197,7 @@ public class PostRetrievalQE {
 
     /**
      * Makes Q' = vec(Q) U Qc
+     * @param query
      * @throws Exception 
      * @return
      */
@@ -224,12 +218,12 @@ public class PostRetrievalQE {
                 vec_Q.add(singleWV);
             }
         }
-//        if(qTerms.length == 1) {
-//            q_prime.addAll(vec_Q);
-//        }
-//        else {
+        q_prime.addAll(vec_Q);
+        // --- original query-term vectors are added
 
+        if(true == toCompose) {
         // Qc
+            System.out.println("Composing ");
             for (int i = 0; i < vec_Q.size()-1; i++) {
                 singleWV = vec_Q.get(i).add(vec_Q.get(i), vec_Q.get(i+1));
                 singleWV.norm = singleWV.getNorm();
@@ -237,12 +231,8 @@ public class PostRetrievalQE {
                 q_c.add(singleWV);
             }
             q_prime.addAll(q_c);
-//        }
-
-        // Q' = vec(Q) U Qc
-        q_prime.addAll(vec_Q);
-        if(q_c!=null)
-            q_prime.addAll(q_c);
+        }
+        // --- composed query terms are added
 
         return q_prime;
     }
@@ -253,31 +243,12 @@ public class PostRetrievalQE {
      * @return Hashmap of terms from across the collection which are similar to q_prime
      * @throws IOException 
      */
-    public HashMap<String, WordProbability> computeAndSortExpansionTerms (List<WordVec> q_prime, ScoreDoc[] hits) throws IOException {
+    public HashMap<String, WordProbability> computeAndSortExpansionTerms (List<WordVec> q_prime) throws IOException {
 
-        HashMap<String, WordVec> feedbackTerms = new HashMap<>();
-        int hits_length;
-        hits_length = hits.length;               // number of documents retrieved in the first retrieval
-
-        for (int i = 0; i < Math.min(numFeedbackDocs, hits_length); i++) {
-        // for each of the numFeedbackDocs initially retrieved documents:
-            int luceneDocId = hits[i].doc;
-            Document d = searcher.doc(luceneDocId);
-            DocumentVector docV = new DocumentVector();
-            docV = docV.getDocumentVector(luceneDocId, collStat);
-            for (Map.Entry<String, PerTermStat> entrySet : docV.docPerTermStat.entrySet()) {
-            // for each of the terms of the feedback document
-                String fdbTerm = entrySet.getKey();
-                WordVec fdbTermVec = wordVecs.wordvecmap.get(fdbTerm);
-                if(fdbTermVec != null)
-                    feedbackTerms.put(fdbTerm, fdbTermVec);
-            }
-
-        }
         List<WordVec> sortedExpansionTerms = new ArrayList<>();
         for (WordVec wv : q_prime) {
             //System.out.println(wv.word);
-            sortedExpansionTerms.addAll(wordVecs.computeNNs(wv, feedbackTerms));
+            sortedExpansionTerms.addAll(wordVecs.computeNNs(wv));
         }
         // sortedExpansionTerms now contains similar terms of query terms (unsorted)
 
@@ -336,11 +307,13 @@ public class PostRetrievalQE {
      * @return BooleanQuery - The expanded query in boolean format
      * @throws Exception 
      */
-    public BooleanQuery makeNewQuery(String qTerms[], ScoreDoc[] hits) throws Exception {
+    public BooleanQuery makeNewQuery(String qTerms[]) throws Exception {
 
         List<WordVec> q_prime = makeQueryVectorForms(qTerms);
 
-        HashMap<String, WordProbability> hashmap_et = computeAndSortExpansionTerms(q_prime, hits);
+//        List<WordVec> expansionTerms = returnPreRetrievalExpansionTerms(qTerms);
+//        HashMap<String, WordProbability> hashmap_et = sortExpansionTerms(q_prime, expansionTerms);
+        HashMap<String, WordProbability> hashmap_et = computeAndSortExpansionTerms(q_prime);
         // Now hashmap_et contains all the expansion terms (normalized weights). No query specific information.
 
         /*
@@ -399,19 +372,14 @@ public class PostRetrievalQE {
 //        FileWriter baselineRes = new FileWriter(resPath+".baseline");
 
         for (TRECQuery query : queries) {
-            collector = TopScoreDocCollector.create(numHits);
+            collector = TopScoreDocCollector.create(numHits, true);
             Query luceneQuery = trecQueryParser.getAnalyzedQuery(query);
 
             System.out.println(query.qid+": Initial query: " + luceneQuery.toString(fieldToSearch));
-            searcher.search(luceneQuery, collector);
-            topDocs = collector.topDocs();
-            hits = topDocs.scoreDocs;
 
-
-            BooleanQuery bq = makeNewQuery(luceneQuery.toString(fieldToSearch).split(" "), hits);
+            BooleanQuery bq = makeNewQuery(luceneQuery.toString(fieldToSearch).split(" "));
 
             System.out.println(bq.toString(fieldToSearch));
-            collector = TopScoreDocCollector.create(numHits);
             searcher.search(bq, collector);
             topDocs = collector.topDocs();
             hits = topDocs.scoreDocs;
@@ -444,7 +412,7 @@ public class PostRetrievalQE {
         }
 
         prop.load(new FileReader(args[0]));
-        PostRetrievalQE preRetqe = new PostRetrievalQE(prop);
+        PreRetrievalQE preRetqe = new PreRetrievalQE(prop);
 
         preRetqe.retrieveAll();
     }

@@ -74,7 +74,7 @@ public class DocumentVector {
             return null;
         }
 
-        TermsEnum iterator = terms.iterator(null);
+        TermsEnum iterator = terms.iterator();
         BytesRef byteRef = null;
 
         //* for each word in the document

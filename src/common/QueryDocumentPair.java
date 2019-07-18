@@ -77,7 +77,7 @@ public class QueryDocumentPair {
         //+++++ index path setting 
         indexPath = prop.getProperty("indexPath");
         indexFile = new File(indexPath);
-        Directory indexDir = FSDirectory.open(indexFile);
+        Directory indexDir = FSDirectory.open(indexFile.toPath());
 
         if (!DirectoryReader.indexExists(indexDir)) {
             System.err.println("Index doesn't exists in "+indexPath);
@@ -105,7 +105,7 @@ public class QueryDocumentPair {
             param2 = Float.parseFloat(prop.getProperty("param2"));
 
         /* setting reader and searcher */
-        reader = DirectoryReader.open(FSDirectory.open(indexFile));
+        reader = DirectoryReader.open(FSDirectory.open(indexFile.toPath()));
 
         searcher = new IndexSearcher(reader);
         searcher.setSimilarity(new DefaultSimilarity());
@@ -155,7 +155,7 @@ public class QueryDocumentPair {
         ScoreDoc[] hits = null;
         TopDocs topDocs = null;
 
-        TopScoreDocCollector collector = TopScoreDocCollector.create(5, true);
+        TopScoreDocCollector collector = TopScoreDocCollector.create(5);
         Query luceneQuery = doidParser.getAnalyzedQuery(docid);
         //System.out.println(luceneQuery.toString("content"));
         searcher.search(luceneQuery, collector);

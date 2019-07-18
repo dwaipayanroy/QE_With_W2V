@@ -75,8 +75,7 @@ public class PreRetrievalQE {
     TRECQueryParser trecQueryParser;
     int             simFuncChoice;
     float           param1, param2;
-
-    float           LM_LAMBDA;
+    String          retFunction;        // retrieval function name
 
     String          nnDumpPath;     // path to the file containing the precomputed NNs
     int             k;              // k terms to be added in the query
@@ -86,10 +85,8 @@ public class PreRetrievalQE {
 
     public PreRetrievalQE(Properties prop) throws IOException, Exception {
 
-        LM_LAMBDA = 0.6f;
-
         this.prop = prop;
-        /* property files are loaded */
+        /* property file loaded */
 
         // +++++ setting the analyzer with English Analyzer with Smart stopword list
         stopFilePath = prop.getProperty("stopFilePath");
@@ -101,7 +98,7 @@ public class PreRetrievalQE {
         indexPath = prop.getProperty("indexPath");
         System.out.println("Using index at: " + indexPath);
         indexFile = new File(prop.getProperty("indexPath"));
-        Directory indexDir = FSDirectory.open(indexFile);
+        Directory indexDir = FSDirectory.open(indexFile.toPath());
 
         if (!DirectoryReader.indexExists(indexDir)) {
             System.err.println("Index doesn't exists in "+indexFile.getAbsolutePath());
@@ -119,9 +116,8 @@ public class PreRetrievalQE {
         param2 = Float.parseFloat(prop.getProperty("param2"));
 
         /* setting reader and searcher */
-        reader = DirectoryReader.open(FSDirectory.open(indexFile));
+        reader = DirectoryReader.open(FSDirectory.open(indexFile.toPath()));
         searcher = new IndexSearcher(reader);
-        searcher.setSimilarity(new LMJelinekMercerSimilarity(LM_LAMBDA));
         setSimilarityFunction(simFuncChoice, param1, param2);
         /* reader and searher set */
 
@@ -135,7 +131,7 @@ public class PreRetrievalQE {
         /* constructed the query */
         trecQueryParser = new TRECQueryParser(queryPath, analyzer, fieldToSearch);
 
-        numHits = Integer.parseInt(prop.getProperty("numHits"));
+        numHits = Integer.parseInt(prop.getProperty("numHits", "1000"));
 
         /* All word vectors are loaded in wordVecs.wordvecmap */
         wordVecs = new WordVecs(prop);
@@ -155,25 +151,32 @@ public class PreRetrievalQE {
         switch(choice) {
             case 0:
                 searcher.setSimilarity(new DefaultSimilarity());
+                retFunction = "Default";
                 break;
             case 1:
                 searcher.setSimilarity(new BM25Similarity(param1, param2));
+                retFunction = "BM25-"+param1+"-"+param2;
                 break;
             case 2:
                 searcher.setSimilarity(new LMJelinekMercerSimilarity(param1));
+                retFunction = "LMJM-"+param1;
                 break;
             case 3:
                 searcher.setSimilarity(new LMDirichletSimilarity(param1));
+                retFunction = "LMDir-"+(int)param1;
                 break;
         }
     }
 
     private void setRunName_ResFileName() {
 
-        Similarity s = searcher.getSimilarity();
-        runName = queryFile.getName()+"-"+s.toString()+"-preRetQE";
+        String vectorPath = new File(prop.getProperty("vectorPath")).getName();
+
+        runName = queryFile.getName()+"-"+retFunction+"-preRetQE"+vectorPath;
+        if(toCompose)
+            runName = runName + "-composed";
         runName = runName.replace(" ", "").replace("(", "").replace(")", "").replace("00000", "");
-        runName = runName.concat("-"+QMIX+"-"+k);
+        runName = runName.concat("-" + k + "-" + QMIX);
         if(null == prop.getProperty("resPath"))
             resPath = "/home/dwaipayan/";
         else
@@ -197,7 +200,6 @@ public class PreRetrievalQE {
 
     /**
      * Makes Q' = vec(Q) U Qc
-     * @param query
      * @throws Exception 
      * @return
      */
@@ -372,7 +374,7 @@ public class PreRetrievalQE {
 //        FileWriter baselineRes = new FileWriter(resPath+".baseline");
 
         for (TRECQuery query : queries) {
-            collector = TopScoreDocCollector.create(numHits, true);
+            collector = TopScoreDocCollector.create(numHits);
             Query luceneQuery = trecQueryParser.getAnalyzedQuery(query);
 
             System.out.println(query.qid+": Initial query: " + luceneQuery.toString(fieldToSearch));
@@ -384,6 +386,7 @@ public class PreRetrievalQE {
             topDocs = collector.topDocs();
             hits = topDocs.scoreDocs;
             int hits_length = hits.length;
+            System.out.println(hits_length + " results retrieved  for query: " + query.qid);
 
             // +++ Writing the result file 
             resFileWriter = new FileWriter(resPath, true);

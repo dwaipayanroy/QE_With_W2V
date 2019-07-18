@@ -103,7 +103,7 @@ public class PostRetrievalQE {
         indexPath = prop.getProperty("indexPath");
         System.out.println("Using index at: " + indexPath);
         indexFile = new File(prop.getProperty("indexPath"));
-        Directory indexDir = FSDirectory.open(indexFile.toPath());
+        Directory indexDir = FSDirectory.open(indexFile);
 
         if (!DirectoryReader.indexExists(indexDir)) {
             System.err.println("Index doesn't exists in "+indexFile.getAbsolutePath());
@@ -126,7 +126,7 @@ public class PostRetrievalQE {
         param2 = Float.parseFloat(prop.getProperty("param2"));
 
         /* setting reader and searcher */
-        reader = DirectoryReader.open(FSDirectory.open(indexFile.toPath()));
+        reader = DirectoryReader.open(FSDirectory.open(indexFile));
         searcher = new IndexSearcher(reader);
         searcher.setSimilarity(new LMJelinekMercerSimilarity(LM_LAMBDA));
         setSimilarityFunction(simFuncChoice, param1, param2);
@@ -177,7 +177,7 @@ public class PostRetrievalQE {
 
     private void setRunName_ResFileName() {
 
-        Similarity s = searcher.getSimilarity(true);
+        Similarity s = searcher.getSimilarity();
         runName = queryFile.getName()+"-"+s.toString()+"-postRetQE";
         runName = runName.replace(" ", "").replace("(", "").replace(")", "").replace("00000", "");
         runName = runName.concat("-"+QMIX+"-"+numFeedbackDocs+"-"+k);
@@ -204,6 +204,7 @@ public class PostRetrievalQE {
 
     /**
      * Makes Q' = vec(Q) U Qc
+     * @param query
      * @throws Exception 
      * @return
      */
@@ -399,7 +400,7 @@ public class PostRetrievalQE {
 //        FileWriter baselineRes = new FileWriter(resPath+".baseline");
 
         for (TRECQuery query : queries) {
-            collector = TopScoreDocCollector.create(numHits);
+            collector = TopScoreDocCollector.create(numHits, true);
             Query luceneQuery = trecQueryParser.getAnalyzedQuery(query);
 
             System.out.println(query.qid+": Initial query: " + luceneQuery.toString(fieldToSearch));
@@ -411,7 +412,7 @@ public class PostRetrievalQE {
             BooleanQuery bq = makeNewQuery(luceneQuery.toString(fieldToSearch).split(" "), hits);
 
             System.out.println(bq.toString(fieldToSearch));
-            collector = TopScoreDocCollector.create(numHits);
+            collector = TopScoreDocCollector.create(numHits, true);
             searcher.search(bq, collector);
             topDocs = collector.topDocs();
             hits = topDocs.scoreDocs;

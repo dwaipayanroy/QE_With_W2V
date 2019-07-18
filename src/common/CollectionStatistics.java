@@ -68,7 +68,7 @@ public class CollectionStatistics {
      * @throws IOException 
      */
     public CollectionStatistics(String indexPath, String field) throws IOException {
-        indexReader = DirectoryReader.open(FSDirectory.open(new File(indexPath)));
+        indexReader = DirectoryReader.open(FSDirectory.open(new File(indexPath).toPath()));
         this.field = field;
         perTermStat = new HashMap<>();
     }
@@ -99,7 +99,7 @@ public class CollectionStatistics {
             System.err.println("Error buildCollectionStat(): terms Null found");
         }
         colSize = terms.getSumTotalTermFreq();  // total number of terms in the index in that field
-        TermsEnum iterator = terms.iterator(null);
+        TermsEnum iterator = terms.iterator();
         BytesRef byteRef = null;
 
         while((byteRef = iterator.next()) != null) {
@@ -200,7 +200,7 @@ public class CollectionStatistics {
         }
 
         System.out.println("Unique term count: " + terms.size());
-        TermsEnum iterator = terms.iterator(null);
+        TermsEnum iterator = terms.iterator();
         BytesRef byteRef = null;
 
         while((byteRef = iterator.next()) != null) {

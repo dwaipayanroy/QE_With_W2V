@@ -79,6 +79,7 @@ public class WordVecs {
 
             k = Integer.parseInt(prop.getProperty("k", "15"));
             wordvecmap = new HashMap();
+            System.out.println("Started loading all vectors into hashmap...");
             try (FileReader fr = new FileReader(wordvecFile);
                 BufferedReader br = new BufferedReader(fr)) {
                 String line;
@@ -94,6 +95,11 @@ public class WordVecs {
             System.err.println("vectorPath not set in properties");
             System.exit(1);
         }
+    }
+
+    // for cross-validation
+    public void setK(int k) {
+        this.k = k;
     }
 
     public void printAllNNs() {
@@ -270,12 +276,12 @@ public class WordVecs {
      * @return 
      */
     public List<WordVec> computeNNs(WordVec w, HashMap<String, WordVec> feedbackTerms) {
-        ArrayList<WordVec> distList = new ArrayList<>(wordvecmap.size());
+        ArrayList<WordVec> distList = new ArrayList<>(feedbackTerms.size());
         
         if (w == null)
             return null;
         
-        for (Map.Entry<String, WordVec> entry : wordvecmap.entrySet()) {
+        for (Map.Entry<String, WordVec> entry : feedbackTerms.entrySet()) {
             WordVec wv = entry.getValue();
             if (wv.word.equals(w.word)) // ignoring computing similarity with itself
                 continue;
